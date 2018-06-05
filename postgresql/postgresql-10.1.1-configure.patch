@@ -1,0 +1,19 @@
+--- postgresql-10.4/configure	2018-05-07 22:51:40.000000000 +0200
++++ ../src/postgresql-10.4/configure	2018-06-05 12:37:13.791156200 +0200
+@@ -2883,6 +2883,7 @@
+  linux*|gnu*|k*bsd*-gnu)
+            template=linux ;;
+    mingw*) template=win32 ;;
++   msys*) template=cygwin ;;
+   netbsd*) template=netbsd ;;
+  openbsd*) template=openbsd ;;
+  solaris*) template=solaris ;;
+@@ -8011,7 +8012,7 @@
+ python_ldlibrary=`${PYTHON} -c "import distutils.sysconfig; print(' '.join(filter(None,distutils.sysconfig.get_config_vars('LDLIBRARY'))))"`
+ 
+ # If LDLIBRARY exists and has a shlib extension, use it verbatim.
+-ldlibrary=`echo "${python_ldlibrary}" | sed -e 's/\.so$//' -e 's/\.dll$//' -e 's/\.dylib$//' -e 's/\.sl$//'`
++ldlibrary=`echo "${python_ldlibrary}" | sed -e 's/\.so$//' -e 's/\.dll$//' -e 's/\.dll.a$//' -e 's/\.dylib$//' -e 's/\.sl$//'`
+ if test -e "${python_libdir}/${python_ldlibrary}" -a x"${python_ldlibrary}" != x"${ldlibrary}"
+ then
+ 	ldlibrary=`echo "${ldlibrary}" | sed "s/^lib//"`

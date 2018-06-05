@@ -1,0 +1,126 @@
+# Maintainer: Alexey Pavlov <alexpux@gmail.com>
+
+pkgbase=postgresql
+pkgname=postgresql
+pkgver=10.4
+pkgrel=1
+pkgdesc="Libraries for use with PostgreSQL"
+arch=('i686' 'x86_64')
+url="https://www.postgresql.org/"
+license=('custom:PostgreSQL')
+makedepends=("gcc"
+             "libxml2"
+             "python2")
+depends=("gcc-libs"
+         "gettext"
+         "libxml2"
+         "libxslt"
+         "openssl"
+         "python2"
+         "tcl"
+         #"readline"
+         #"wineditline"
+         "zlib"
+         "winpty")
+options=('staticlibs' 'strip')
+source=("https://ftp.postgresql.org/pub/source/v${pkgver}/postgresql-${pkgver}.tar.bz2"
+        postgresql-9.4.1-mingw-link.patch
+        postgresql-9.5.1-pl-perl.patch
+        postgresql-9.5.1-pl-python.patch
+        postgresql-9.4.1-pl-tcl.patch
+        postgresql-9.4.1-mingw-enable-readline.patch)
+sha256sums=('1b60812310bd5756c62d93a9f93de8c28ea63b0df254f428cd1cf1a4d9020048'
+            'c740a8f308abc85f460ca170969feb1ec41e99072f0e06ef44a63173b26fd7b5'
+            '57c1e9b75c042af591b05b9dda60e6327b5c364bb5adc2675da8a48b47e11b81'
+            '6e2db558f0b85da2847c109fd7b7e1681bb97dccd805e8e03c1a7dba5e0a1af4'
+            'ab9c42374b4e8a01b598810b19b583d9ee7bf5c43c39c019f66b62aacac38926'
+            '51c72fbd380d23cf944165405221912a277b9be99e285479772b39cacbbf384f')
+
+prepare() {
+  cd ${srcdir}/postgresql-${pkgver}
+  patch -p1 -i ${srcdir}/postgresql-9.4.1-mingw-link.patch
+  patch -p1 -i ${srcdir}/postgresql-9.5.1-pl-perl.patch
+  patch -p1 -i ${srcdir}/postgresql-9.5.1-pl-python.patch
+  patch -p1 -i ${srcdir}/postgresql-9.4.1-pl-tcl.patch
+  #patch -p1 -i ${srcdir}/postgresql-9.4.1-mingw-enable-readline.patch
+  patch -p1 -i ${srcdir}/postgresql-10.1.1-configure.patch
+
+  autoreconf -fiv
+}
+
+build() {
+  [[ -d "${srcdir}/build-${CARCH}" ]] && rm -rf "${srcdir}/build-${CARCH}"
+  mkdir -p "${srcdir}/build-${CARCH}" && cd "${srcdir}/build-${CARCH}"
+  export PYTHON=/usr/bin/python2
+  ../postgresql-${pkgver}/configure \
+    --build=${CHOST} \
+    --host=${CHOST} \
+    --with-openssl \
+    --enable-thread-safety \
+    --enable-integer-datetimes \
+    --enable-nls \
+    --with-libxml \
+    --with-libxslt \
+    --with-python \
+    --without-perl \
+    --with-tcl \
+    --with-tclconfig=/usr/lib
+    #--with-libedit-preferred
+
+  # Make DLL definition file visible during each arch build
+  ln -s "${srcdir}/postgresql-${pkgver}/src/interfaces/libpq/libpqdll.def" src/interfaces/libpq/
+  ln -s "${srcdir}/postgresql-${pkgver}/src/interfaces/ecpg/ecpglib/libecpgdll.def" src/interfaces/ecpg/ecpglib/
+  ln -s "${srcdir}/postgresql-${pkgver}/src/interfaces/ecpg/pgtypeslib/libpgtypesdll.def" src/interfaces/ecpg/pgtypeslib/
+  ln -s "${srcdir}/postgresql-${pkgver}/src/interfaces/ecpg/compatlib/libecpg_compatdll.def" src/interfaces/ecpg/compatlib/
+
+  #for dir in src/interfaces src/bin/pg_config src/bin/psql src/bin/pg_dump; do
+  #  make -C ${dir}
+  #done
+  make
+}
+
+package() {
+  cd "${srcdir}/build-${CARCH}"
+  mkdir -p "${pkgdir}${MINGW_PREFIX}/"{bin,include,lib}
+
+  make DESTDIR="${pkgdir}" install
+  # install libs
+
+  #for dir in src/interfaces src/bin/pg_config src/bin/psql src/bin/pg_dump; do
+  #  make -C ${dir} DESTDIR="${pkgdir}" install
+  #done
+
+  # Move dll's to bin directory
+  mv "${pkgdir}/usr/lib/"*.dll "${pkgdir}/usr/bin/"
+
+  # Rename the .a files to .dll.a as they're actually import libraries and not static libraries
+  #for implib in "${pkgdir}${MINGW_PREFIX}/lib/"*.a; do
+  #  mv $implib ${implib/.a/.dll.a}
+  #done
+
+  # these headers are needed by the not-so-public headers of the interfaces
+  mkdir -p "${pkgdir}"/usr/include/{libpq,postgresql/internal/libpq}
+  install -m644 ${srcdir}/postgresql-${pkgver}/src/include/c.h "${pkgdir}/usr/include/postgresql/internal/"
+  install -m644 ${srcdir}/postgresql-${pkgver}/src/include/port.h "${pkgdir}/usr/include/postgresql/internal/"
+  install -m644 ${srcdir}/postgresql-${pkgver}/src/include/postgres_fe.h "${pkgdir}/usr/include/postgresql/internal/"
+  install -m644 ${srcdir}/postgresql-${pkgver}/src/include/libpq/pqcomm.h "${pkgdir}/usr/include/postgresql/internal/libpq/"
+
+  # these headers are needed by the public headers of the interfaces
+  #  install -m644 pg_config.h "${pkgdir}/usr/include/"
+  #  install -m644 pg_config_os.h "${pkgdir}/usr/include/"
+  #  install -m644 pg_config_ext.h "${pkgdir}/usr/include/"
+  #  cd "${srcdir}/postgresql-$pkgver/src/include"
+  #  install -m644 postgres_ext.h "${pkgdir}/usr/include/"
+  #  install -m644 libpq/libpq-fs.h "${pkgdir}/usr/include/libpq/"
+  #  install -m644 pg_config_manual.h "${pkgdir}/usr/include/"
+
+  # Use winpty-git script to invoke utilities. Please don't move this into a patch as
+  # hopefully one day we won't need this hack.
+  for f in clusterdb createdb createuser dropdb dropuser initdb pg_basebackup pg_dump pg_dumpall pg_receivewal pg_restore psql reindexdb vacuumdb; do
+    mv "${pkgdir}"/usr/bin/${f}.exe "${pkgdir}"/usr/bin/${f}_exe
+    _exename="${f}"
+    echo "#!/usr/bin/env bash" > "${pkgdir}/usr/bin/${_exename}"
+    echo '/usr/bin/winpty "$( dirname ${BASH_SOURCE[0]} )/'${_exename}'.exe" "$@"' >> "${pkgdir}/usr/bin/${_exename}"
+    mv "${pkgdir}"/usr/bin/${f}_exe "${pkgdir}"/usr/bin/${f}.exe
+  done
+}

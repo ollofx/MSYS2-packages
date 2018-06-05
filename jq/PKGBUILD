@@ -1,0 +1,50 @@
+# Maintainer: Gore Liu <goreliu@126.com>
+
+_realname=jq
+pkgbase=jq
+pkgname=jq
+pkgver=1.5
+pkgrel=5
+pkgdesc="Command-line JSON processor"
+arch=('i686' 'x86_64')
+url='https://stedolan.github.io/jq/'
+license=('MIT')
+makedepends=("autoconf" "automake" "bison" "flex" "python2")
+depends=("oniguruma")
+source=("https://github.com/stedolan/jq/releases/download/jq-${pkgver}/jq-${pkgver}.tar.gz"
+        no-undefined.patch
+        missing-library.patch)
+sha256sums=('c4d2bfec6436341113419debf479d833692cc5cdab7eb0326b5a4d4fbe9f493c'
+            'e4b6f5eb5bfeda43564bcede307eac36cf26dbd3437eef45b51b2db617a525b5'
+            'cbc4365d5ea514a318568582693e1883249473c64b79609007fe3c565b2b81ed')
+
+prepare() {
+  cd "${srcdir}"/${_realname}-${pkgver}
+  patch -p1 -i ${srcdir}/no-undefined.patch
+  patch -p1 -i ${srcdir}/missing-library.patch
+  
+  autoreconf -fiv
+}
+
+build() {
+  [[ -d "${srcdir}"/build-${CARCH} ]] && rm -rf "${srcdir}"/build-${CARCH}
+  mkdir -p "${srcdir}"/build-${CARCH} && cd "${srcdir}"/build-${CARCH}
+  ../${_realname}-${pkgver}/configure \
+    --prefix=/usr \
+    --build=${CHOST} \
+    --host=${CHOST} \
+    --enable-static \
+    --enable-shared
+
+  make
+}
+
+check() {
+  cd "${srcdir}"/build-${CARCH}
+  make check || true
+}
+
+package() {
+  cd "${srcdir}"/build-${CARCH}
+  make install DESTDIR="${pkgdir}"
+}
