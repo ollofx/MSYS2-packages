@@ -1,0 +1,84 @@
+
+
+Submitslow bash init for scrtip
+Bash-completion is very slow on MSYS2
+ 
+$ mkpasswd -l -c > /etc/passwd
+$ mkgroup -l -c > /etc/group
+
+--- /etc/nsswitch.conf.org +++ /etc/nsswitch.conf @@ -1,7 +1,7 @@ # Begin /etc/nsswitch.conf -passwd: files db -group: files db +passwd: files #db +group: files #db  
+it did work
+
+pip install pydevd
+export IPYTHONENABLE=False
+ import pydevd;pydevd.settrace('localhost', port=21000, stdoutToServer=True, stderrToServer=True)
+pip download uwsgi
+replace in uwsgicongi.py 
+:.,$s/uwsgi_os.startswith('CYGWIN')/True/gc
+all is in https://github.com/ollofx/MSYS2-packages WIT
+
+git clone "https://github.com/Alexpux/MINGW-packages"
+git clone "https://github.com/Alexpux/MSYS2-packages"
+cd MINGW-packages/
+important info MINGW is windows compiler port win32
+where msys is cygwin core. (select and accept are differing) this is why uwsgi compilation failed to
+cp -r mingw-w64-postgresql ../MSYS2-packages/
+mv mingw-w64-postgresql postgresql
+vim ../python3/PKGBUILD one side
+vim postgres/PKGBUILD remove all reference to MINGW_ user /usr instead
+
+replace ${MINGW_CHOST} by ${CHOST}
+replace ${MINGW_PREFIX} by /usr
+remove --target in configure
+remove --with_ldap in configure
+makepkg -sCLf
+vim ./src/postgresql-10.4/configure
+add line in ./congfigure:2886
+msys*) template=cygwin ;;
+
+when doing pip install psycop2 the linkage needs LIBS
+after  -lpg we need append -lpgcommon -lpgport -lintl -lxslt -lxml2 -lssl -lcrypto -lz -lreadline -lcrypt 
+
+so in the setup.py of psycop2 add
+def finalize_msys(self):
+    """Finalize build system configuration on platform."""
+    self.libraries.append('pgcommon')
+    self.libraries.append('pgport')
+    self.libraries.append('intl')
+    self.libraries.append('xslt')
+    self.libraries.append('xml2')
+    self.libraries.append('ssl')
+    self.libraries.append('crypto')
+    self.libraries.append('z')
+    self.libraries.append('readline')
+    self.libraries.append('crypt')
+
+issue with accept argument can't be decatec
+because warning: 'accept' redeclared without dllimport attribute
+Importing inline functions in MinGW
+the first declaration is WINSOCK_API_LINKAGE SOCKET WSAAPI accept(SOCKET s,struct sockaddr *addr,int *addrlen);
+and the failing one of confugure.c
+extern SOCKET WSAAPI accept (SOCKET, struct sockaddr *, int *);
+
+add vim ./src/postgresql-10.4/configure:12892
+extern WINSOCK_API_LINKAGE $ac_cv_func
+so the configure.c is not correct we shlould prepend WINSOCK_API_LINKAGE
+
+
+
+remake
+makepkg -sLfe
+install top 
+pacman -S procps-ng
+install after makepkg -sLfe
+jq copy onigura and install it
+makepkg -sCLf
+pacman -U oniguruma-6.8.2-1-x86_64.pkg.tar.xz
+
+remove all mingw packages....burk
+pacman -Ss mingw | grep installed
+pacman -Rdsu mingw-w64-x86_64-toolchain
+in list I put all the package I want to remove
+pacman -Rcns - < list
+
+Submitbuilding package for msys2/msys2
