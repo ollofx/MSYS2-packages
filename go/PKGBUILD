@@ -1,0 +1,146 @@
+# Maintainer: Martell Malone < martell malone at g mail dot com >
+# Contributor: Ray Donnelly <mingw.android@gmail.com>
+
+_realname=go
+pkgbase=${_realname}
+pkgname=${_realname}
+pkgver=1.10.1
+pkgrel=1
+pkgdesc="Go Lang"
+arch=('i686' 'x86_64')
+license=('BSD')
+makedepends=("gcc")
+url="https://www.golang.org/"
+depends=()
+options=('!strip')
+source=("https://storage.googleapis.com/golang/go${pkgver}.src.tar.gz"
+        0010-go1.7-proper-go-binary-path.patch
+        0011-add-GO_BUILD_VERBOSE.patch)
+sha256sums=('589449ff6c3ccbff1d391d4e7ab5bb5d5643a5a41a04c99315e55c16bbf73ddc'
+            'af2c10300635ac84e6d870cb40a6481ccb57487fb7a6efad781f20088bec4de8'
+            'c7f9a39a4b29668276d5836d2c1e1d5c8017c6dd66b976f519e9f5e85383ab85')
+
+# Helper macros to help make tasks easier #
+apply_patch_with_msg() {
+  for _patch in "$@"
+  do
+    msg2 "Applying $_patch"
+    patch -Nbp1 -i "${srcdir}/$_patch"
+  done
+}
+
+del_file_exists() {
+  for _fname in "$@"
+  do
+    if [ -f $_fname ]; then
+      rm -rf $_fname
+    fi
+  done
+}
+# =========================================== #
+
+prepare() {
+  [[ -d "${srcdir}"/${_realname}-${pkgver} ]] && rm -rf "${srcdir}"/${_realname}-${pkgver}
+  mv "${srcdir}"/${_realname} "${srcdir}"/${_realname}-${pkgver}
+
+  cd "${srcdir}/${_realname}-${pkgver}"
+#  apply_patch_with_msg \
+#    0010-go1.7-proper-go-binary-path.patch
+#    0011-add-GO_BUILD_VERBOSE.patch
+}
+
+build() {
+  cd "${srcdir}"/${_realname}-${pkgver}/src
+  export GOROOT_BOOTSTRAP=/`echo ${MSYSTEM} | tr '[:upper:]' '[:lower:]'`/lib/go
+  export GOROOT="${srcdir}/${_realname}-${pkgver}"
+  export GOBIN="${GOROOT}/bin"
+  export GOPATH="${srcdir}/"
+  export GOROOT_FINAL=/usr/lib/go
+#  export GO_CFLAGS="-D__USE_MINGW_ANSI_STDIO=1"
+#  export CFLAGS="-D__USE_MINGW_ANSI_STDIO=1"
+  export GO_BUILD_VERBOSE=1
+  # I have no idea why we need this to be run from a completely seperate
+  # MSDOS shell, but it does. Without this, the build exits with no info
+  # about what went wrong.
+  echo "cd $(cygpath -w $PWD)"                    > /tmp/bootstrap_go.bat
+  echo "start /wait \"\" cmd.exe /c .\\make.bat" >> /tmp/bootstrap_go.bat
+  /tmp/bootstrap_go.bat
+
+  # ./make.bat
+}
+
+package() {
+  cd "${_realname}-${pkgver}"
+
+  export GOROOT="${srcdir}/${_realname}-${pkgver}"
+  export GOBIN="${GOROOT}/bin"
+
+# install -Dm755 "${srcdir}/godoc" "${pkgdir}${MINGW_PREFIX}/bin/godoc"
+
+  mkdir -p "${pkgdir}/usr/share/licenses/go"
+  install -Dm644 "${srcdir}"/${_realname}-${pkgver}/LICENSE \
+    "${pkgdir}/usr/share/licenses/go/LICENSE"
+
+  mkdir -p \
+    "${pkgdir}/usr/"{share/go,lib/go,lib/go/src,lib/go/site/src}
+
+  cp -r doc misc -t                  "${pkgdir}/usr/share/go"
+  cp -a bin                          "${pkgdir}/usr"
+  cp -a pkg                          "${pkgdir}/usr/lib/go"
+  cp -a "$GOROOT/src"                "${pkgdir}/usr/lib/go/"
+  cp -a "$GOROOT/src/cmd"            "${pkgdir}/usr/lib/go/src/cmd"
+  cp -a "$GOROOT/lib"                "${pkgdir}/usr/lib/go/"
+
+  install -Dm644 src/Make.* "${pkgdir}/usr/lib/go/src"
+
+  # Remove object files from target src dir
+  find "${pkgdir}/usr/lib/go/src/" -type f -name '*.[ao]' -delete
+
+  # Fix for FS#32813
+  find "${pkgdir}" -type f -name sql.go -exec chmod -x {} \;
+
+  # Remove all executable source files
+  find "${pkgdir}/usr/lib/go/src" -type f -executable -delete
+
+  # This is to make go get code.google.com/p/go-tour/gotour and
+  # then running the gotour executable work out of the box.
+  # ln -sf /usr/bin "${pkgdir}/usr/lib/go/bin"
+
+  # For FS#42660 / FS#42661 / gox
+  install -Dm755 src/make.bash "${pkgdir}/usr/lib/go/src/make.bash"
+  install -Dm755 src/run.bash "${pkgdir}/usr/lib/go/src/run.bash"
+  cp -r misc/ "${pkgdir}/usr/lib/go/"
+
+  # For godoc
+  install -Dm644 favicon.ico "${pkgdir}/usr/lib/go/favicon.ico"
+
+  rm -f "${pkgdir}/usr/share/go/doc/articles/wiki/get.bin"
+
+  install -Dm644 VERSION "${pkgdir}/usr/lib/go/VERSION"
+
+  find "${pkgdir}/usr/"{lib/go/pkg,bin} -type f -exec touch '{}' +
+ 
+  # install profile script 
+  mkdir -p "${pkgdir}/usr"/etc/profile.d
+  echo "export GOROOT=/usr/lib/go" > "${pkgdir}/usr"/etc/profile.d/go.sh
+  cp "${pkgdir}/usr"/etc/profile.d/go.{sh,zsh}
+}
+
+# Please leave this debugging stuff here until someone gets to the bottom of the problem why ./make.bat fails.
+
+# pushd ~/msys2/MINGW-packages/mingw-w64-go/src/go-1.7.4/src
+# (export GOROOT_BOOTSTRAP=C:/msys64/mingw64/lib/go export CC_FOR_TARGET=gcc ; export GOROOT=/home/ray/msys2/MINGW-packages/mingw-w64-go/src/go-1.7.4 ; export GOBIN=C:/msys64/home/ray/msys2/MINGW-packages/mingw-w64-go/src/go-1.7.4/bin ; export GOARCH=amd64 ; export GOOS=windows ; export GOHOSTARCH=amd64 ; export GOHOSTOS=windows ; export GOTOOLDIR=/home/ray/msys2/MINGW-packages/mingw-w64-go/src/go-1.7.4/pkg/tool/windows_amd64 ; PATH=/home/ray/msys2/MINGW-packages/mingw-w64-go/src/go-1.7.4/bin:/mingw64/bin:$PATH .\\cmd\\dist\\dist bootstrap -a -v=5)
+
+# From MSDOS:
+# pushd C:\Users\ray\msys2\MINGW-packages\mingw-w64-go\src\go-1.7.4\src
+# set GOROOT_BOOTSTRAP=C:/msys64/mingw64/lib/go
+# set CC_FOR_TARGET=gcc
+# set GOROOT=C:/msys64/home/ray/msys2/MINGW-packages/mingw-w64-go/src/go-1.7.4
+# set GOBIN=C:/msys64/home/ray/msys2/MINGW-packages/mingw-w64-go/src/go-1.7.4/bin
+# set GOARCH=amd64
+# set GOOS=windows
+# set GOHOSTARCH=amd64
+# set GOHOSTOS=windows
+# set GOTOOLDIR=C:/msys64/home/ray/msys2/MINGW-packages/mingw-w64-go/src/go-1.7.4/pkg/tool/windows_amd64
+# set "PATH=C:/msys64/home/ray/msys2/MINGW-packages/mingw-w64-go/src/go-1.7.4/bin;C:/msys64/mingw64/bin;%PATH%"
+# .\cmd\dist\dist bootstrap -a -v=5
